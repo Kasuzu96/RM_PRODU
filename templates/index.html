@@ -5,21 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RM Producciones - Foto Booth</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
     <style>
-        /* Estilos rápidos para el selector de cámara */
-        .camera-controls {
-            margin: 10px 0;
+        /* --- ESTILOS EXTRA PARA EL SELECTOR (Para que no se vea feo) --- */
+        .camera-wrapper {
+            position: relative;
+            margin-bottom: 15px;
             text-align: center;
         }
+
+        /* Diseño del selector estilo "Botón elegante" */
         select#cameraSelect {
-            padding: 10px;
-            font-size: 16px;
-            border-radius: 8px;
-            border: 1px solid #ccc;
-            background-color: white;
-            color: #333;
-            width: 90%;
-            max-width: 300px;
+            appearance: none; /* Quita el diseño gris de Windows/Android */
+            -webkit-appearance: none;
+            background-color: rgba(255, 255, 255, 0.15); /* Fondo semitransparente */
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50px; /* Bordes muy redondos */
+            padding: 12px 30px;
+            color: white; /* Texto blanco */
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
+            width: auto;
+            min-width: 200px;
+            text-align: center;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px); /* Efecto vidrio borroso */
+        }
+
+        select#cameraSelect:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+            border-color: white;
+        }
+
+        select#cameraSelect:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Flechita personalizada pequeña */
+        .camera-wrapper::after {
+            content: '▼';
+            font-size: 10px;
+            color: rgba(255,255,255,0.7);
+            position: absolute;
+            right: calc(50% - 90px); /* Ajuste aproximado */
+            top: 18px;
+            pointer-events: none;
+        }
+
+        /* Ajuste para que los opciones sean legibles en fondo blanco (móvil) */
+        option {
+            background-color: #333;
+            color: white;
         }
     </style>
 </head>
@@ -33,18 +71,19 @@
             <canvas id="canvas" style="display:none;"></canvas>
         </div>
 
-        <div class="camera-controls">
-            <label for="cameraSelect">📷 Cambiar Cámara:</label><br>
+        <div class="camera-wrapper">
             <select id="cameraSelect">
-                <option value="" disabled selected>Cargando cámaras...</option>
+                <option value="" disabled selected>📷 Buscando cámaras...</option>
             </select>
         </div>
 
         <button id="btn-capturar" class="btn-primary">📸 TOMAR FOTO</button>
 
         <div id="formulario" style="display:none;">
-            <h3>¡Foto lista! Ingresa tus datos:</h3>
-            <img id="foto-preview" src="" alt="Tu foto">
+            <h3>¡Foto lista! ✨</h3>
+            <div class="preview-container">
+                <img id="foto-preview" src="" alt="Tu foto">
+            </div>
             
             <input type="text" id="nombre" placeholder="Nombre completo" required>
             <input type="tel" id="celular" placeholder="Celular" required>
@@ -66,9 +105,7 @@
         const fotoPreview = document.getElementById('foto-preview');
         let currentStream;
 
-        // 1. INICIAR CÁMARA AL CARGAR PAGINA
         async function startCamera(deviceId = null) {
-            // Detener stream anterior si existe
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
@@ -77,7 +114,8 @@
                 video: {
                     deviceId: deviceId ? { exact: deviceId } : undefined,
                     width: { ideal: 1280 },
-                    height: { ideal: 720 }
+                    height: { ideal: 720 },
+                    facingMode: deviceId ? undefined : "environment" // Intenta trasera por defecto
                 }
             };
 
@@ -85,59 +123,64 @@
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 currentStream = stream;
                 video.srcObject = stream;
-                
-                // Solo listamos dispositivos una vez que tenemos permiso
-                if (!deviceId) {
-                    await listCameras();
-                }
+                if (!deviceId) await listCameras();
             } catch (err) {
-                console.error("Error accediendo a la cámara:", err);
-                alert("No pudimos acceder a la cámara. Asegúrate de dar permisos.");
+                console.error("Error cámara:", err);
+                // Si falla trasera, intenta cualquiera
+                if (!deviceId) {
+                   try {
+                       const streamFallback = await navigator.mediaDevices.getUserMedia({ video: true });
+                       currentStream = streamFallback;
+                       video.srcObject = streamFallback;
+                   } catch(e) { alert("Error: No se puede acceder a la cámara."); }
+                }
             }
         }
 
-        // 2. LISTAR CÁMARAS DISPONIBLES
         async function listCameras() {
-            cameraSelect.innerHTML = ""; // Limpiar lista
+            cameraSelect.innerHTML = "";
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
             if (videoDevices.length === 0) {
-                const option = document.createElement('option');
-                option.text = "No se encontraron cámaras";
-                cameraSelect.add(option);
+                cameraSelect.innerHTML = "<option>No hay cámaras</option>";
                 return;
             }
+
+            // Añadir opción por defecto estética
+            const defaultOption = document.createElement('option');
+            defaultOption.text = "🔄 Cambiar Cámara";
+            defaultOption.disabled = true;
+            defaultOption.selected = true;
+            cameraSelect.add(defaultOption);
 
             videoDevices.forEach((device, index) => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
-                // Si el dispositivo no tiene etiqueta (nombre), le inventamos uno
-                const label = device.label || `Cámara ${index + 1}`;
+                // Nombres más amigables
+                let label = device.label || `Cámara ${index + 1}`;
+                if (label.toLowerCase().includes('back') || label.toLowerCase().includes('trasera')) label = "📸 Cámara Trasera";
+                if (label.toLowerCase().includes('front') || label.toLowerCase().includes('frontal')) label = "🤳 Cámara Selfie";
+                
                 option.text = label;
                 cameraSelect.add(option);
             });
 
-            // Escuchar cambios en el select
             cameraSelect.onchange = () => {
                 startCamera(cameraSelect.value);
             };
         }
 
-        // Iniciar todo
         window.addEventListener('load', () => startCamera());
 
-        // --- LÓGICA DE CAPTURA (IGUAL QUE ANTES) ---
         btnCapturar.addEventListener('click', () => {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            
-            const dataURL = canvas.toDataURL('image/png');
-            fotoPreview.src = dataURL;
+            fotoPreview.src = canvas.toDataURL('image/png');
             
             video.style.display = 'none';
-            document.querySelector('.camera-controls').style.display = 'none'; // Ocultar selector
+            document.querySelector('.camera-wrapper').style.display = 'none'; // Ocultar selector
             btnCapturar.style.display = 'none';
             formulario.style.display = 'block';
         });
@@ -145,7 +188,7 @@
         document.getElementById('btn-repetir').addEventListener('click', () => {
             formulario.style.display = 'none';
             video.style.display = 'block';
-            document.querySelector('.camera-controls').style.display = 'block'; // Mostrar selector
+            document.querySelector('.camera-wrapper').style.display = 'block'; // Mostrar selector
             btnCapturar.style.display = 'block';
         });
 
@@ -155,10 +198,7 @@
             const correo = document.getElementById('correo').value;
             const foto = fotoPreview.src;
 
-            if (!nombre || !correo) {
-                alert("Por favor llena nombre y correo");
-                return;
-            }
+            if (!nombre || !correo) return alert("Faltan datos obligatorios");
 
             const btn = document.getElementById('btn-enviar');
             btn.textContent = "⏳ Enviando...";
@@ -171,11 +211,11 @@
             })
             .then(res => res.json())
             .then(data => {
-                alert("¡Enviado! Revisa tu correo (Bandeja Promociones).");
+                alert("¡Foto Enviada con Éxito! 📸");
                 location.reload();
             })
             .catch(err => {
-                alert("Error: " + err);
+                alert("Hubo un error al enviar: " + err);
                 btn.textContent = "🚀 ENVIAR FOTO";
                 btn.disabled = false;
             });
