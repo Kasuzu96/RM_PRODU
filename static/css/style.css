@@ -1,0 +1,124 @@
+:root {
+    /* Paleta de colores inspirada en el logo RM Producciones */
+    --primary-blue: #007bff; /* Azul eléctrico de los arcos */
+    --secondary-white: #ffffff; /* Blanco de las letras RM */
+    --dark-bg: #121212; /* Fondo negro profundo */
+    --card-bg: #1e1e1e; /* Fondo gris oscuro para la tarjeta */
+    --text-light: #f8f9fa; /* Texto claro */
+    --text-muted: #adb5bd; /* Texto secundario */
+}
+
+body {
+    font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    background-color: var(--dark-bg);
+    color: var(--text-light);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+}
+
+.rm-card {
+    background-color: var(--card-bg);
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 123, 255, 0.2); /* Sombra azul sutil */
+    overflow: hidden;
+    width: 100%;
+    max-width: 450px;
+}
+
+.rm-title {
+    color: var(--primary-blue);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+}
+
+.video-container, .photo-preview-container {
+    position: relative;
+    width: 100%;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    border: 2px solid var(--primary-blue); /* Borde azul al video/foto */
+}
+
+video, img {
+    width: 100%;
+    display: block;
+}
+
+/* Personalización de Inputs de Bootstrap */
+.form-control {
+    background-color: #2c2c2c;
+    border: 1px solid #444;
+    color: var(--text-light);
+}
+
+.form-control:focus {
+    background-color: #333;
+    color: var(--text-light);
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 0.25rem rgba(0, 123, 255, 0.25);
+}
+
+.form-control::placeholder {
+    color: var(--text-muted);
+}
+
+/* Botones personalizados */
+.btn-rm-primary {
+    background-color: var(--primary-blue);
+    border: none;
+    font-weight: 600;
+    padding: 12px;
+    transition: all 0.3s ease;
+}
+
+.btn-rm-primary:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 123, 255, 0.4);
+}
+
+.btn-rm-secondary {
+    background-color: transparent;
+    border: 2px solid var(--text-muted);
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 10px;
+    transition: all 0.3s ease;
+}
+
+.btn-rm-secondary:hover {
+    background-color: var(--text-muted);
+    color: var(--dark-bg);
+}
+
+.hidden {
+    display: none !important;
+}
+/* --- AGREGAR AL FINAL DE style.css --- */
+
+.logo-rm {
+    max-height: 100px; /* Ajusta esto si lo quieres más grande o chico */
+    width: auto;
+    display: block;
+    margin: 0 auto 15px auto; /* Centrado y con margen abajo */
+}
+
+.footer-text {
+    margin-top: 30px;
+    padding-top: 15px;
+    border-top: 1px solid #333;
+    color: #6c757d; /* Gris apagado */
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.footer-text strong {
+    color: var(--primary-blue); /* Tu marca Ludev en azul */
+}
