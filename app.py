@@ -2,6 +2,7 @@ import os
 import smtplib
 import base64
 import threading
+import sys # Para imprimir logs forzados
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -11,175 +12,148 @@ from flask_cors import CORS
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# 1. Cargar variables de entorno
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# Imprimir versión al iniciar para ver en los logs si se actualizó
-print("--- INICIANDO APP: VERSION V3 (PUERTO 587 + HILOS) ---")
+# Imprimir logs inmediatamente (sin esperar buffer)
+print("--- ARRANQUE V4: TIMEOUTS ACTIVADOS ---", file=sys.stdout)
 
-# 2. Configurar Supabase
-url: str = os.getenv("SUPABASE_URL")
-key: str = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(url, key) if url and key else None
+# Configuración
+url = os.getenv("SUPABASE_URL")
+key = os.getenv("SUPABASE_KEY")
+supabase = create_client(url, key) if url and key else None
 
-# 3. Configurar Gmail
 MAIL_USER = os.getenv("MAIL_USERNAME")
 MAIL_PASS = os.getenv("MAIL_PASSWORD")
 
-# --- RUTA PRINCIPAL ---
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# --- RUTA DE VERIFICACIÓN (NUEVA) ---
-@app.route('/version')
-def version():
-    return "<h1>Versión V3 Activa</h1><p>Si ves esto, el código se actualizó correctamente.</p>"
-
-# --- RUTA DE DIAGNÓSTICO (Prueba sincrónica) ---
 @app.route('/test-email')
 def test_email():
+    print(">>> Iniciando Test de Email...", file=sys.stdout)
     try:
         if not MAIL_USER or not MAIL_PASS:
-            return "ERROR: Faltan variables de entorno."
+            return "ERROR: Faltan credenciales en Render."
+        
+        # Validación de contraseña (espacios)
+        if " " in MAIL_PASS:
+            return "<h1>ERROR CRÍTICO ❌</h1><p>La contraseña tiene espacios. Quítalos en Render Dashboard.</p>"
 
         msg = MIMEMultipart()
         msg['From'] = MAIL_USER
         msg['To'] = MAIL_USER
-        msg['Subject'] = "Diagnóstico Render V3 (Puerto 587) 🚀"
-        msg.attach(MIMEText("Código actualizado correctamente. Puerto 587 en uso.", 'plain'))
+        msg['Subject'] = "Test Render V4 (Timeout 10s)"
+        msg.attach(MIMEText("Prueba de conexión con timeout explícito.", 'plain'))
 
-        # --- USANDO PUERTO 587 (NO SSL DIRECTO) ---
-        server = smtplib.SMTP('smtp.gmail.com', 587)
+        print(">>> Conectando a SMTP...", file=sys.stdout)
+        
+        # --- CAMBIO V4: Timeout de 10 segundos ---
+        # Si no conecta en 10s, cancela y muestra el error.
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=10) 
+        
+        server.set_debuglevel(1) # Logs detallados
+        print(">>> Servidor conectado. Iniciando EHLO...", file=sys.stdout)
         server.ehlo()
-        server.starttls()  # Encriptamos aquí
+        print(">>> Iniciando STARTTLS...", file=sys.stdout)
+        server.starttls()
+        print(">>> Iniciando EHLO (Post-TLS)...", file=sys.stdout)
         server.ehlo()
+        print(">>> Iniciando Login...", file=sys.stdout)
         server.login(MAIL_USER, MAIL_PASS)
+        print(">>> Enviando mensaje...", file=sys.stdout)
         server.send_message(msg)
         server.quit()
         
-        return "<h1>¡ÉXITO TOTAL! ✅</h1> <p>Correo enviado (V3). El código viejo ha sido eliminado.</p>"
+        print(">>> ¡ENVÍO EXITOSO!", file=sys.stdout)
+        return "<h1>¡ÉXITO V4! ✅</h1> <p>Correo enviado sin congelarse.</p>"
     
     except Exception as e:
+        print(f"!!! ERROR TEST: {e}", file=sys.stdout)
         return f"<h1>FALLÓ ❌</h1> <p>Error:</p> <pre>{str(e)}</pre>"
 
-# --- RUTA PARA GUARDAR Y ENVIAR ---
 @app.route('/guardar', methods=['POST'])
 def guardar_datos():
     try:
         data = request.json
-        
         nombre = data.get('nombre')
         celular = data.get('celular')
-        correo_usuario = data.get('correo')
+        correo = data.get('correo')
         foto_base64 = data.get('foto')
 
-        # 1. Guardar en Supabase (Rápido)
+        # Supabase
         if supabase:
             try:
-                datos_usuario = {
-                    "nombre": nombre,
-                    "celular": celular,
-                    "correo": correo_usuario
-                }
-                supabase.table('usuarios').insert(datos_usuario).execute()
+                supabase.table('usuarios').insert({
+                    "nombre": nombre, "celular": celular, "correo": correo
+                }).execute()
             except Exception as e:
-                print(f"Advertencia Supabase: {e}")
+                print(f"Error Supabase: {e}", file=sys.stdout)
 
-        # 2. Procesar Imagen
+        # Imagen
         if "," in foto_base64:
             header, encoded = foto_base64.split(",", 1)
         else:
-            encoded = foto_base64  
-        binary_data = base64.b64decode(encoded)
+            encoded = foto_base64
+        binary = base64.b64decode(encoded)
 
-        # 3. Preparar HTML del cliente
+        # HTML
         try:
-            html_cliente = render_template('correo.html', nombre=nombre)
+            html = render_template('correo.html', nombre=nombre)
         except:
-            html_cliente = f"<h1>Hola {nombre}</h1><p>Gracias por tu registro.</p>"
+            html = f"Hola {nombre}"
 
-        # 4. Enviar Correos en SEGUNDO PLANO (Threading)
-        # Esto es vital para evitar el Timeout de Render
+        # Hilo con manejo de errores mejorado
         hilo = threading.Thread(
-            target=tarea_enviar_correos, 
-            args=(nombre, celular, correo_usuario, binary_data, html_cliente)
+            target=tarea_enviar, 
+            args=(nombre, celular, correo, binary, html)
         )
         hilo.start()
 
-        # Respuesta inmediata al usuario (antes de enviar el correo)
-        return jsonify({"status": "ok", "mensaje": "Datos guardados. Correos en cola."})
+        return jsonify({"status": "ok", "mensaje": "Procesando envío"})
 
     except Exception as e:
-        print(f"Error crítico: {e}")
         return jsonify({"status": "error", "mensaje": str(e)}), 500
 
-# --- TAREA EN SEGUNDO PLANO ---
-def tarea_enviar_correos(nombre, celular, correo_usuario, binary_data, html_cliente):
-    """Hilo independiente para enviar correos sin bloquear la app"""
+def tarea_enviar(nombre, celular, correo, binary, html):
     try:
-        enviar_correo_admin(nombre, celular, correo_usuario, binary_data)
-        enviar_correo_cliente_con_html(nombre, correo_usuario, binary_data, html_cliente)
-        print(f"--- [OK] Correos enviados para {nombre} ---")
+        # Enviar Admin
+        enviar_smtp(MAIL_USER, f"Lead: {nombre}", f"Datos: {celular} - {correo}", binary)
+        # Enviar Cliente
+        enviar_smtp(correo, f"¡Hola {nombre}!", html, binary, es_html=True)
+        print(f"--- Hilo completado para {nombre} ---", file=sys.stdout)
     except Exception as e:
-        print(f"!!! [ERROR] Falló el envío en segundo plano: {e}")
+        print(f"!!! Error en hilo: {e}", file=sys.stdout)
 
-# --- FUNCIONES DE CONSTRUCCIÓN DE CORREO ---
-def enviar_correo_admin(nombre, celular, correo_cliente, foto_bytes):
-    msg = MIMEMultipart()
-    msg['From'] = MAIL_USER
-    msg['To'] = MAIL_USER
-    msg['Subject'] = f"🔔 Nuevo Lead: {nombre}"
-
-    html = f"""
-    <h3>Nuevo Registro Capturado</h3>
-    <ul>
-        <li><b>Nombre:</b> {nombre}</li>
-        <li><b>Celular:</b> {celular}</li>
-        <li><b>Correo:</b> {correo_cliente}</li>
-    </ul>
-    """
-    msg.attach(MIMEText(html, 'html'))
-    image = MIMEImage(foto_bytes, name=f"registro_{nombre}.png")
-    msg.attach(image)
-    
-    enviar_smtp_seguro(msg)
-
-def enviar_correo_cliente_con_html(nombre, destinatario, foto_bytes, html_content):
-    msg = MIMEMultipart()
-    msg['From'] = MAIL_USER
-    msg['To'] = destinatario 
-    msg['Subject'] = f"¡Hola {nombre}, aquí tienes tu foto! 📸"
-
-    msg.attach(MIMEText(html_content, 'html'))
-    image = MIMEImage(foto_bytes, name="tu_foto.png")
-    msg.attach(image)
-
-    enviar_smtp_seguro(msg)
-
-# --- FUNCIÓN DE ENVÍO SMTP (Puerto 587 - SIN SSL DIRECTO) ---
-def enviar_smtp_seguro(mensaje):
-    """
-    Usa el puerto 587 con STARTTLS.
-    Esencial para evitar el bloqueo de red de Render (Errno 101).
-    """
+def enviar_smtp(destinatario, asunto, cuerpo, foto, es_html=False):
     try:
-        # IMPORTANTE: No uses SMTP_SSL. Usa SMTP normal + starttls()
-        # El puerto DEBE ser 587.
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.set_debuglevel(1) # Esto nos dará más info si falla
+        msg = MIMEMultipart()
+        msg['From'] = MAIL_USER
+        msg['To'] = destinatario
+        msg['Subject'] = asunto
+
+        if es_html:
+            msg.attach(MIMEText(cuerpo, 'html'))
+        else:
+            msg.attach(MIMEText(cuerpo, 'plain'))
+            
+        img = MIMEImage(foto, name="foto.png")
+        msg.attach(img)
+
+        # Timeout de 15s para envío real
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=15) as server:
             server.ehlo()
-            server.starttls()  # <--- Aquí activamos la seguridad
+            server.starttls()
             server.ehlo()
             server.login(MAIL_USER, MAIL_PASS)
-            server.send_message(mensaje)
-            print(f"--> [EXITO] Correo enviado a: {mensaje['To']}")
+            server.send_message(msg)
             
     except Exception as e:
-        print(f"!!! Error SMTP Crítico: {e}")
+        print(f"!!! Error SMTP ({destinatario}): {e}", file=sys.stdout)
+        raise e
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
