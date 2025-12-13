@@ -14,7 +14,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 
 # --- PARCHE IPV4 (VITAL PARA RENDER) ---
-# Esto evita que Python intente usar IPv6 y falle
+# Forzamos a Python a usar solo IPv4
 old_getaddrinfo = socket.getaddrinfo
 def new_getaddrinfo(*args, **kwargs):
     responses = old_getaddrinfo(*args, **kwargs)
@@ -27,7 +27,7 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-print("--- ARRANQUE V6: IPV4 + PUERTO 465 (SSL DIRECTO) ---", file=sys.stdout)
+print("--- ARRANQUE V7: IPV4 FORZADO + PUERTO 587 (STARTTLS) ---", file=sys.stdout)
 
 # Configuración
 url = os.getenv("SUPABASE_URL")
@@ -43,7 +43,7 @@ def index():
 
 @app.route('/test-email')
 def test_email():
-    print(">>> Iniciando Test V6 (SSL 465)...", file=sys.stdout)
+    print(">>> Iniciando Test V7...", file=sys.stdout)
     try:
         if not MAIL_USER or not MAIL_PASS:
             return "ERROR: Faltan credenciales."
@@ -51,15 +51,19 @@ def test_email():
         msg = MIMEMultipart()
         msg['From'] = MAIL_USER
         msg['To'] = MAIL_USER
-        msg['Subject'] = "Test Render V6 (SSL 465 + IPv4)"
-        msg.attach(MIMEText("Si lees esto, la combinación SSL+IPv4 funcionó.", 'plain'))
+        msg['Subject'] = "Test Render V7 (IPv4 + 587)"
+        msg.attach(MIMEText("Esta es la combinación ganadora: IPv4 forzado sobre puerto 587.", 'plain'))
 
-        print(">>> Conectando a SMTP_SSL (Puerto 465)...", file=sys.stdout)
+        print(">>> Conectando a SMTP (Puerto 587)...", file=sys.stdout)
         
-        # --- CAMBIO CLAVE: Volvemos a SMTP_SSL pero con el parche IPv4 activo ---
-        # Timeout extendido a 20s
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20)
+        # COMBINACIÓN V7: SMTP normal (no SSL) + Puerto 587 + Timeout 20s
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=20)
         server.set_debuglevel(1)
+        
+        print(">>> STARTTLS...", file=sys.stdout)
+        server.ehlo() # Saludo inicial
+        server.starttls() # Encriptación
+        server.ehlo() # Re-saludo seguro
         
         print(">>> Login...", file=sys.stdout)
         server.login(MAIL_USER, MAIL_PASS)
@@ -68,7 +72,7 @@ def test_email():
         server.send_message(msg)
         server.quit()
         
-        return "<h1>¡VICTORIA V6! ✅</h1> <p>El puerto 465 funcionó gracias al parche IPv4.</p>"
+        return "<h1>¡VICTORIA V7! ✅</h1> <p>Correo enviado. El parche IPv4 arregló el puerto 587.</p>"
     
     except Exception as e:
         print(f"!!! ERROR TEST: {e}", file=sys.stdout)
@@ -83,7 +87,6 @@ def guardar_datos():
         correo = data.get('correo')
         foto_base64 = data.get('foto')
 
-        # Supabase
         if supabase:
             try:
                 supabase.table('usuarios').insert({
@@ -92,27 +95,24 @@ def guardar_datos():
             except Exception as e:
                 print(f"Error Supabase: {e}", file=sys.stdout)
 
-        # Imagen
         if "," in foto_base64:
             header, encoded = foto_base64.split(",", 1)
         else:
             encoded = foto_base64
         binary = base64.b64decode(encoded)
 
-        # HTML
         try:
             html = render_template('correo.html', nombre=nombre)
         except:
             html = f"Hola {nombre}"
 
-        # Hilo
         hilo = threading.Thread(
             target=tarea_enviar, 
             args=(nombre, celular, correo, binary, html)
         )
         hilo.start()
 
-        return jsonify({"status": "ok", "mensaje": "Procesando envío"})
+        return jsonify({"status": "ok", "mensaje": "Enviando..."})
 
     except Exception as e:
         return jsonify({"status": "error", "mensaje": str(e)}), 500
@@ -140,8 +140,11 @@ def enviar_smtp(destinatario, asunto, cuerpo, foto, es_html=False):
         img = MIMEImage(foto, name="foto.png")
         msg.attach(img)
 
-        # Usamos SMTP_SSL y puerto 465 también aquí
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30) as server:
+        # Configuración V7 aplicada al envío real
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
             server.login(MAIL_USER, MAIL_PASS)
             server.send_message(msg)
             
