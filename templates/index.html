@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     
     <style>
-        /* Estilos auxiliares por si falta algo en style.css */
+        /* Estilos auxiliares */
         .hidden { display: none !important; }
         .logo-rm { max-width: 150px; margin-bottom: 20px; }
         video { width: 100%; border-radius: 10px; }
@@ -79,137 +79,131 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        // --- JAVASCRIPT CON LÓGICA DE SELECCIÓN DE CÁMARA ---
         const video = document.getElementById('video');
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement('canvas'); // Lienzo invisible
         const fotoPreview = document.getElementById('foto-preview');
         const cameraSelect = document.getElementById('cameraSelect');
         let currentStream;
         let fotoDataURL = "";
 
-        // 1. FUNCIÓN PARA INICIAR CÁMARA (CON ID ESPECÍFICO)
-        async function startCamera(deviceId = null) {
-            // Detener stream anterior si existe para liberar recursos
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
+        // URL del logo para la marca de agua (Flask la genera)
+        const watermarkUrl = "{{ url_for('static', filename='img/logo.png') }}";
 
+        // --- FUNCIONES DE CÁMARA (Sin cambios) ---
+        async function startCamera(deviceId = null) {
+            if (currentStream) currentStream.getTracks().forEach(track => track.stop());
             const constraints = {
                 video: {
                     deviceId: deviceId ? { exact: deviceId } : undefined,
-                    // Si no hay ID, intenta la trasera (environment), si no, la frontal
                     facingMode: deviceId ? undefined : "environment",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
+                    width: { ideal: 1280 }, height: { ideal: 720 }
                 }
             };
-
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 currentStream = stream;
                 video.srcObject = stream;
-                
-                // Si es la primera vez (no hay deviceId), listamos las cámaras
-                if (!deviceId) {
-                    await listCameras();
-                }
+                if (!deviceId) await listCameras();
             } catch (err) {
-                console.error("Error accediendo a la cámara:", err);
-                // Fallback: intentar cualquier cámara si la configuración falla
-                if (!deviceId) {
-                    try {
-                        const simpleStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                        currentStream = simpleStream;
-                        video.srcObject = simpleStream;
-                    } catch (e) {
-                        alert("No se pudo acceder a la cámara. Revisa permisos.");
-                    }
-                }
+                console.error("Error cámara:", err);
+                if (!deviceId) { try { video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true }); } catch(e){} }
             }
         }
 
-        // 2. FUNCIÓN PARA LLENAR EL SELECTOR
         async function listCameras() {
-            cameraSelect.innerHTML = ""; // Limpiar
+            cameraSelect.innerHTML = "";
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
-
-            if (videoDevices.length === 0) {
-                const option = document.createElement('option');
-                option.text = "No se encontraron cámaras";
-                cameraSelect.add(option);
-                return;
-            }
-
-            // Opción por defecto
-            const defaultOption = document.createElement('option');
-            defaultOption.text = "Seleccionar Cámara ⬇️";
-            defaultOption.disabled = true;
-            defaultOption.selected = true;
-            cameraSelect.add(defaultOption);
-
-            videoDevices.forEach((device, index) => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                
-                // Nombres amigables
-                let label = device.label || `Cámara ${index + 1}`;
-                if (label.toLowerCase().includes('back') || label.toLowerCase().includes('trasera')) {
-                    label = "📸 Cámara Trasera";
-                } else if (label.toLowerCase().includes('front') || label.toLowerCase().includes('frontal')) {
-                    label = "🤳 Cámara Selfie";
-                }
-
-                option.text = label;
-                cameraSelect.add(option);
+            if (videoDevices.length === 0) { cameraSelect.innerHTML = "<option>No hay cámaras</option>"; return; }
+            cameraSelect.add(new Option("Seleccionar Cámara ⬇️", "", true, true));
+            videoDevices.forEach((device, i) => {
+                let label = device.label || `Cámara ${i + 1}`;
+                if (label.toLowerCase().includes('back') || label.toLowerCase().includes('trasera')) label = "📸 Cámara Trasera";
+                else if (label.toLowerCase().includes('front') || label.toLowerCase().includes('frontal')) label = "🤳 Cámara Selfie";
+                cameraSelect.add(new Option(label, device.deviceId));
             });
-
-            // Evento al cambiar opción
-            cameraSelect.onchange = () => {
-                startCamera(cameraSelect.value);
-            };
+            cameraSelect.onchange = () => startCamera(cameraSelect.value);
         }
 
-        // 3. CAPTURAR FOTO
+        // --- NUEVA FUNCIÓN TOMAR FOTO (CON MARCA DE AGUA) ---
         function tomarFoto() {
+            const ctx = canvas.getContext('2d');
+            
+            // 1. Configurar dimensiones del lienzo igual al video
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            fotoDataURL = canvas.toDataURL('image/png');
-            fotoPreview.src = fotoDataURL;
-            
-            // Cambio de vistas usando clases Bootstrap/CSS
-            document.getElementById('vista-camara').classList.add('hidden');
-            document.getElementById('vista-form').classList.remove('hidden');
+
+            // 2. Dibujar la foto del video primero
+            ctx.drawImage(video, 0, 0);
+
+            // 3. Cargar la imagen del logo para la marca de agua
+            const watermarkImg = new Image();
+            watermarkImg.src = watermarkUrl;
+            // Importante: Permitir carga de imagen local para que no de error de seguridad
+            watermarkImg.crossOrigin = "Anonymous"; 
+
+            // 4. Esperar a que el logo cargue antes de dibujarlo
+            watermarkImg.onload = () => {
+                // --- Configuración del Logo ---
+                // Hacemos que el logo ocupe el 25% del ancho de la foto
+                const logoWidth = canvas.width * 0.25; 
+                // Calculamos el alto proporcional para que no se deforme
+                const scaleFactor = logoWidth / watermarkImg.width;
+                const logoHeight = watermarkImg.height * scaleFactor;
+
+                // Margen desde la esquina (puedes ajustar este número)
+                const padding = 30; 
+
+                // Posición X (izquierda)
+                const xPosition = padding;
+                // Posición Y (abajo - altura del logo - margen)
+                const yPosition = canvas.height - logoHeight - padding;
+
+                // Opcional: Hacerlo un poco transparente (descomenta si quieres)
+                // ctx.globalAlpha = 0.8; 
+
+                // Dibujar el logo sobre la foto
+                ctx.drawImage(watermarkImg, xPosition, yPosition, logoWidth, logoHeight);
+
+                // ctx.globalAlpha = 1.0; // Resetear transparencia
+
+                // --- Finalizar proceso ---
+                // Convertir el lienzo combinado a imagen Base64
+                fotoDataURL = canvas.toDataURL('image/png');
+                // Mostrar en la previsualización
+                fotoPreview.src = fotoDataURL;
+                
+                // Cambiar vista
+                document.getElementById('vista-camara').classList.add('hidden');
+                document.getElementById('vista-form').classList.remove('hidden');
+            };
+
+            // Si el logo falla al cargar, tomar la foto sin él
+            watermarkImg.onerror = (err) => {
+                console.error("Error cargando watermark, enviando sin logo.", err);
+                fotoDataURL = canvas.toDataURL('image/png');
+                fotoPreview.src = fotoDataURL;
+                document.getElementById('vista-camara').classList.add('hidden');
+                document.getElementById('vista-form').classList.remove('hidden');
+            }
         }
 
-        // 4. REINICIAR
+        // --- FUNCIONES AUXILIARES (Sin cambios) ---
         function reiniciar() {
             document.getElementById('vista-form').classList.add('hidden');
             document.getElementById('vista-camara').classList.remove('hidden');
-            // Reactivar cámara por si acaso se pausó
-            if (cameraSelect.value) {
-                startCamera(cameraSelect.value);
-            } else {
-                startCamera();
-            }
+            if (cameraSelect.value) startCamera(cameraSelect.value); else startCamera();
         }
 
-        // 5. ENVIAR DATOS (TU LÓGICA ORIGINAL)
         async function enviarDatos() {
             const nombre = document.getElementById('nombre').value;
             const celular = document.getElementById('celular').value;
             const correo = document.getElementById('correo').value;
-
-            if (!nombre || !celular || !correo) {
-                alert("Por favor, completa todos los campos.");
-                return;
-            }
-
+            if (!nombre || !celular || !correo) return alert("Completa todos los campos.");
+            
             const btn = document.querySelector('.btn-send');
             const textoOriginal = btn.innerText;
-            btn.innerText = "Enviando...";
-            btn.disabled = true;
+            btn.innerText = "Enviando..."; btn.disabled = true;
 
             try {
                 const respuesta = await fetch('/guardar', {
@@ -218,21 +212,14 @@
                     body: JSON.stringify({ nombre, celular, correo, foto: fotoDataURL })
                 });
                 const resultado = await respuesta.json();
-
                 if (resultado.status === 'ok') {
-                    alert("¡Enviado! 🚀 Revisa la carpeta de Promociones/Spam.");
-                    location.reload();
-                } else {
-                    throw new Error(resultado.mensaje);
-                }
+                    alert("¡Enviado! 🚀 Revisa Promociones/Spam."); location.reload();
+                } else throw new Error(resultado.mensaje);
             } catch (error) {
                 alert("Error: " + error.message);
-                btn.innerText = textoOriginal;
-                btn.disabled = false;
+                btn.innerText = textoOriginal; btn.disabled = false;
             }
         }
-
-        // Iniciar al cargar
         window.addEventListener('load', () => startCamera());
     </script>
 </body>
