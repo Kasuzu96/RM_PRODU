@@ -1,7 +1,7 @@
 import os
 import smtplib
 import base64
-import threading  # <--- NUEVA LIBRERÍA IMPORTANTE
+import threading
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -11,7 +11,7 @@ from flask_cors import CORS
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# 1. Cargar variables
+# 1. Cargar variables de entorno
 load_dotenv()
 
 app = Flask(__name__)
@@ -20,19 +20,44 @@ CORS(app)
 # 2. Configurar Supabase
 url: str = os.getenv("SUPABASE_URL")
 key: str = os.getenv("SUPABASE_KEY")
-# Validación básica
 supabase: Client = create_client(url, key) if url and key else None
 
 # 3. Configurar Gmail
 MAIL_USER = os.getenv("MAIL_USERNAME")
 MAIL_PASS = os.getenv("MAIL_PASSWORD")
 
-# --- RUTAS ---
-
+# --- RUTA PRINCIPAL ---
 @app.route('/')
 def index():
     return render_template('index.html')
 
+# --- RUTA DE DIAGNÓSTICO (Prueba el correo en vivo) ---
+@app.route('/test-email')
+def test_email():
+    try:
+        if not MAIL_USER or not MAIL_PASS:
+            return "ERROR: Faltan variables de entorno MAIL_USERNAME o MAIL_PASSWORD."
+
+        msg = MIMEMultipart()
+        msg['From'] = MAIL_USER
+        msg['To'] = MAIL_USER
+        msg['Subject'] = "Prueba Diagnóstico Render (Puerto 587) 🚀"
+        msg.attach(MIMEText("Si lees esto, el puerto 587 funciona y el bloqueo se ha superado.", 'plain'))
+
+        # CONEXIÓN DIRECTA PARA DIAGNÓSTICO (Puerto 587 + STARTTLS)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.set_debuglevel(1) # Muestra detalles en los logs de Render
+        server.starttls()        # Encriptamos la conexión
+        server.login(MAIL_USER, MAIL_PASS)
+        server.send_message(msg)
+        server.quit()
+        
+        return "<h1>¡ÉXITO TOTAL! ✅</h1> <p>El correo salió por el puerto 587. Ahora la app debería funcionar.</p>"
+    
+    except Exception as e:
+        return f"<h1>FALLÓ ❌</h1> <p>Error exacto:</p> <pre>{str(e)}</pre>"
+
+# --- RUTA PARA GUARDAR Y ENVIAR ---
 @app.route('/guardar', methods=['POST'])
 def guardar_datos():
     try:
@@ -43,83 +68,56 @@ def guardar_datos():
         correo_usuario = data.get('correo')
         foto_base64 = data.get('foto')
 
-        # --- A. Guardar en Supabase (Esto es rápido) ---
+        # 1. Guardar en Supabase (Rápido)
         if supabase:
-            datos_usuario = {
-                "nombre": nombre,
-                "celular": celular,
-                "correo": correo_usuario
-            }
-            supabase.table('usuarios').insert(datos_usuario).execute()
-        
-        # --- B. Procesar Imagen ---
+            try:
+                datos_usuario = {
+                    "nombre": nombre,
+                    "celular": celular,
+                    "correo": correo_usuario
+                }
+                supabase.table('usuarios').insert(datos_usuario).execute()
+            except Exception as e:
+                print(f"Advertencia Supabase: {e}")
+
+        # 2. Procesar Imagen
         if "," in foto_base64:
             header, encoded = foto_base64.split(",", 1)
         else:
             encoded = foto_base64  
         binary_data = base64.b64decode(encoded)
 
-        # --- C. Preparar el HTML del correo AQUÍ (antes del hilo) ---
-        # Renderizamos el template aquí porque Flask no deja hacerlo fácil en hilos secundarios
+        # 3. Preparar HTML del cliente
         try:
             html_cliente = render_template('correo.html', nombre=nombre)
         except:
             html_cliente = f"<h1>Hola {nombre}</h1><p>Gracias por tu registro.</p>"
 
-        # --- D. Enviar Correos en SEGUNDO PLANO (Threading) ---
-        # Creamos un "trabajador fantasma" que hará el envío sin bloquear al usuario
+        # 4. Enviar Correos en SEGUNDO PLANO (Threading)
+        # Esto evita el error de Timeout porque responde al usuario antes de enviar el mail
         hilo = threading.Thread(
             target=tarea_enviar_correos, 
             args=(nombre, celular, correo_usuario, binary_data, html_cliente)
         )
-        hilo.start() # ¡Arranca el hilo y sigue de largo!
+        hilo.start()
 
-        # Respondemos INMEDIATAMENTE al usuario "Todo ok", sin esperar a Gmail
-        return jsonify({"status": "ok", "mensaje": "Guardado. Correos enviándose en segundo plano."})
+        return jsonify({"status": "ok", "mensaje": "Datos guardados. Correos procesándose."})
 
     except Exception as e:
-        print(f"Error en endpoint: {e}")
+        print(f"Error crítico: {e}")
         return jsonify({"status": "error", "mensaje": str(e)}), 500
 
-# --- RUTA DE DIAGNÓSTICO (Solo para probar el correo) ---
-@app.route('/test-email')
-def test_email():
-    try:
-        # Verificar credenciales
-        if not MAIL_USER or not MAIL_PASS:
-            return "ERROR: Faltan las variables de entorno MAIL_USERNAME o MAIL_PASSWORD en Render."
-
-        msg = MIMEMultipart()
-        msg['From'] = MAIL_USER
-        msg['To'] = MAIL_USER # Se envía a ti mismo
-        msg['Subject'] = "Prueba de Diagnóstico Render 🚀"
-        msg.attach(MIMEText("Si lees esto, la conexión SMTP funciona perfectamente.", 'plain'))
-
-        # Intento de conexión DIRECTA (sin hilos) para ver el error
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        server.login(MAIL_USER, MAIL_PASS)
-        server.send_message(msg)
-        server.quit()
-        
-        return "<h1>¡ÉXITO! ✅</h1> <p>El correo salió correctamente. Revisa tu bandeja de entrada.</p>"
-    
-    except Exception as e:
-        # Aquí veremos el error real que Render nos está ocultando
-        return f"<h1>FALLÓ ❌</h1> <p>El error exacto es:</p> <pre>{str(e)}</pre>"
-    
-# --- FUNCION QUE CORRE EN SEGUNDO PLANO ---
+# --- TAREA EN SEGUNDO PLANO ---
 def tarea_enviar_correos(nombre, celular, correo_usuario, binary_data, html_cliente):
-    """Esta función se ejecuta en paralelo y si tarda, no afecta al usuario"""
+    """Se ejecuta en un hilo aparte para no bloquear al usuario"""
     try:
-        # 1. Enviar al Admin
         enviar_correo_admin(nombre, celular, correo_usuario, binary_data)
-        # 2. Enviar al Cliente
         enviar_correo_cliente_con_html(nombre, correo_usuario, binary_data, html_cliente)
-        print("--- Correos enviados con éxito en segundo plano ---")
+        print(f"--- Hilo finalizado: Correos enviados para {nombre} ---")
     except Exception as e:
-        print(f"ERROR ENVIANDO CORREOS EN HILO: {e}")
+        print(f"!!! ERROR EN HILO DE CORREO: {e}")
 
-# --- FUNCIONES DE CORREO MODIFICADAS (Puerto 465 SSL) ---
+# --- FUNCIONES DE CONSTRUCCIÓN DE CORREO ---
 
 def enviar_correo_admin(nombre, celular, correo_cliente, foto_bytes):
     msg = MIMEMultipart()
@@ -128,7 +126,7 @@ def enviar_correo_admin(nombre, celular, correo_cliente, foto_bytes):
     msg['Subject'] = f"🔔 Nuevo Lead: {nombre}"
 
     html = f"""
-    <h3>Nuevo Registro</h3>
+    <h3>Nuevo Registro Capturado</h3>
     <ul>
         <li><b>Nombre:</b> {nombre}</li>
         <li><b>Celular:</b> {celular}</li>
@@ -153,15 +151,25 @@ def enviar_correo_cliente_con_html(nombre, destinatario, foto_bytes, html_conten
 
     enviar_smtp_seguro(msg)
 
+# --- FUNCIÓN DE ENVÍO SMTP (Puerto 587) ---
 def enviar_smtp_seguro(mensaje):
     """
-    Usamos SMTP_SSL y puerto 465.
-    Es más directo y evita problemas de handshake que causan timeouts.
+    Usa el puerto 587 con STARTTLS.
+    Esencial para evitar el bloqueo de red de Render (Errno 101).
     """
     try:
-        # CAMBIO CLAVE: SMTP_SSL en puerto 465 (No requiere starttls)
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        # Usamos smtplib.SMTP estándar (no _SSL) + Puerto 587
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.ehlo()      # Saludo
+            server.starttls()  # Encriptación activa
+            server.ehlo()      # Re-saludo seguro
             server.login(MAIL_USER, MAIL_PASS)
             server.send_message(mensaje)
+            print(f"--> Correo enviado a: {mensaje['To']}")
+            
     except Exception as e:
-        print(f"Error conectando a Gmail: {e}")
+        print(f"!!! Error SMTP: {e}")
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
