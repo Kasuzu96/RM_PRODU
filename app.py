@@ -81,6 +81,32 @@ def guardar_datos():
         print(f"Error en endpoint: {e}")
         return jsonify({"status": "error", "mensaje": str(e)}), 500
 
+# --- RUTA DE DIAGNÓSTICO (Solo para probar el correo) ---
+@app.route('/test-email')
+def test_email():
+    try:
+        # Verificar credenciales
+        if not MAIL_USER or not MAIL_PASS:
+            return "ERROR: Faltan las variables de entorno MAIL_USERNAME o MAIL_PASSWORD en Render."
+
+        msg = MIMEMultipart()
+        msg['From'] = MAIL_USER
+        msg['To'] = MAIL_USER # Se envía a ti mismo
+        msg['Subject'] = "Prueba de Diagnóstico Render 🚀"
+        msg.attach(MIMEText("Si lees esto, la conexión SMTP funciona perfectamente.", 'plain'))
+
+        # Intento de conexión DIRECTA (sin hilos) para ver el error
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.login(MAIL_USER, MAIL_PASS)
+        server.send_message(msg)
+        server.quit()
+        
+        return "<h1>¡ÉXITO! ✅</h1> <p>El correo salió correctamente. Revisa tu bandeja de entrada.</p>"
+    
+    except Exception as e:
+        # Aquí veremos el error real que Render nos está ocultando
+        return f"<h1>FALLÓ ❌</h1> <p>El error exacto es:</p> <pre>{str(e)}</pre>"
+    
 # --- FUNCION QUE CORRE EN SEGUNDO PLANO ---
 def tarea_enviar_correos(nombre, celular, correo_usuario, binary_data, html_cliente):
     """Esta función se ejecuta en paralelo y si tarda, no afecta al usuario"""
