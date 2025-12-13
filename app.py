@@ -162,18 +162,24 @@ def enviar_correo_cliente_con_html(nombre, destinatario, foto_bytes, html_conten
 
 # --- FUNCIÓN DE ENVÍO SMTP (Puerto 587 - SIN SSL DIRECTO) ---
 def enviar_smtp_seguro(mensaje):
+    """
+    Usa el puerto 587 con STARTTLS.
+    Esencial para evitar el bloqueo de red de Render (Errno 101).
+    """
     try:
-        # Usamos smtplib.SMTP (sin SSL) y luego starttls()
+        # IMPORTANTE: No uses SMTP_SSL. Usa SMTP normal + starttls()
+        # El puerto DEBE ser 587.
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.set_debuglevel(1) # Esto nos dará más info si falla
             server.ehlo()
-            server.starttls()
+            server.starttls()  # <--- Aquí activamos la seguridad
             server.ehlo()
             server.login(MAIL_USER, MAIL_PASS)
             server.send_message(mensaje)
-            print(f"--> SMTP Enviado a: {mensaje['To']}")
+            print(f"--> [EXITO] Correo enviado a: {mensaje['To']}")
             
     except Exception as e:
-        print(f"!!! Error SMTP: {e}")
+        print(f"!!! Error SMTP Crítico: {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
