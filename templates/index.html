@@ -1,119 +1,95 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RM Producciones - Foto Booth</title>
-    
+    <title>Registro RM Producciones</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     
     <style>
-        /* --- ESTILOS EXTRA PARA EL SELECTOR DE CÁMARA (Estilo Glass) --- */
-        .camera-wrapper {
-            position: relative;
-            margin-bottom: 15px;
-            text-align: center;
-            z-index: 10;
-        }
-
-        /* Diseño del selector */
-        select#cameraSelect {
-            appearance: none;
-            -webkit-appearance: none;
-            background-color: rgba(0, 0, 0, 0.5); /* Fondo oscuro semitransparente */
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            border-radius: 50px;
-            padding: 8px 25px;
-            color: white;
-            font-size: 14px;
-            font-family: inherit;
-            cursor: pointer;
-            width: auto;
-            min-width: 200px;
-            text-align: center;
-            backdrop-filter: blur(4px);
-        }
-
-        select#cameraSelect:focus {
-            outline: none;
-            border-color: #fff;
-            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-        }
-        
-        /* Ajuste para que las opciones sean legibles */
-        option {
-            background-color: #222;
-            color: white;
-        }
-
-        /* Ajustes para centrar todo mejor */
-        body {
-            background-color: #000; /* Fondo negro para resaltar la foto */
-            color: white;
-        }
-        
-        .container {
-            max-width: 600px; /* Evita que se estire demasiado en PC */
-            margin-top: 20px;
-            text-align: center;
-        }
-
-        .logo {
-            max-width: 150px; /* Controlar tamaño del logo */
-            margin-bottom: 20px;
-        }
+        /* Estilos auxiliares por si falta algo en style.css */
+        .hidden { display: none !important; }
+        .logo-rm { max-width: 150px; margin-bottom: 20px; }
+        video { width: 100%; border-radius: 10px; }
+        #foto-preview { width: 100%; border-radius: 10px; }
     </style>
 </head>
-<body class="bg-dark text-white">
+<body>
 
-    <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100">
-        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo img-fluid mb-3">
-        
-        <div class="video-container position-relative w-100 mb-3" style="max-width: 100%; overflow: hidden; border-radius: 15px;">
-            <video id="video" autoplay playsinline style="width: 100%; border-radius: 15px; object-fit: cover;"></video>
-            <canvas id="canvas" style="display:none;"></canvas>
-        </div>
-
-        <div class="camera-wrapper mb-3">
-            <select id="cameraSelect" class="form-select-sm">
-                <option value="" disabled selected>📷 Buscando cámaras...</option>
-            </select>
-        </div>
-
-        <button id="btn-capturar" class="btn btn-primary btn-lg rounded-pill px-5 py-3 shadow">📸 TOMAR FOTO</button>
-
-        <div id="formulario" style="display:none; width: 100%;">
-            <h3 class="mb-3">¡Foto lista! ✨</h3>
+    <div class="container d-flex justify-content-center min-vh-100 align-items-center">
+        <div class="card rm-card p-4 shadow-lg" style="width: 100%; max-width: 500px;">
             
-            <div class="preview-container mb-3 text-center">
-                <img id="foto-preview" src="" alt="Tu foto" class="img-fluid rounded shadow" style="max-height: 400px;">
+            <div class="text-center">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="RM Producciones" class="logo-rm">
             </div>
-            
-            <div class="mb-3">
-                <input type="text" id="nombre" class="form-control mb-2" placeholder="Nombre completo" required>
-                <input type="tel" id="celular" class="form-control mb-2" placeholder="Celular" required>
-                <input type="email" id="correo" class="form-control mb-2" placeholder="Correo electrónico" required>
+
+            <div id="vista-camara" class="text-center">
+                <h2 class="rm-title h4 mb-2">Captura tu momento</h2>
+                
+                <div class="mb-3">
+                    <select id="cameraSelect" class="form-select text-center" style="border-radius: 20px;">
+                        <option value="" disabled selected>🔄 Cargando cámaras...</option>
+                    </select>
+                </div>
+                
+                <div class="video-container mb-4 position-relative">
+                    <video id="video" autoplay playsinline></video>
+                </div>
+                
+                <button class="btn btn-primary btn-rm-primary w-100 py-2 rounded-pill" onclick="tomarFoto()">
+                    📸 Capturar Fotografía
+                </button>
             </div>
-            
-            <div class="d-grid gap-2">
-                <button id="btn-enviar" class="btn btn-success btn-lg">🚀 ENVIAR FOTO</button>
-                <button id="btn-repetir" class="btn btn-secondary">🔄 REPETIR</button>
+
+            <div id="vista-form" class="hidden">
+                <h2 class="rm-title text-center h4 mb-3">Completa tus Datos</h2>
+                
+                <div class="photo-preview-container mb-4 text-center">
+                    <img id="foto-preview" src="" alt="Tu foto" class="img-fluid shadow-sm">
+                </div>
+
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="nombre" placeholder="Nombre Completo" required>
+                </div>
+                <div class="mb-3">
+                    <input type="tel" class="form-control" id="celular" placeholder="Número de Celular" required>
+                </div>
+                <div class="mb-4">
+                    <input type="email" class="form-control" id="correo" placeholder="Correo Electrónico" required>
+                </div>
+
+                <button class="btn btn-success w-100 mb-3 btn-send rounded-pill py-2" onclick="enviarDatos()">
+                    🚀 Enviar Foto
+                </button>
+                
+                <button class="btn btn-outline-secondary w-100 rounded-pill py-2" onclick="reiniciar()">
+                    🔄 Volver a tomar foto
+                </button>
             </div>
+
+            <div class="footer-text text-center mt-4 text-muted small">
+                <p class="mb-1">Derechos reservados RM Producciones</p>
+                <p class="mb-0">Desarrollado por <strong>Ludev</strong></p>
+            </div>
+
         </div>
     </div>
 
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const cameraSelect = document.getElementById('cameraSelect');
-        const btnCapturar = document.getElementById('btn-capturar');
-        const formulario = document.getElementById('formulario');
-        const fotoPreview = document.getElementById('foto-preview');
-        let currentStream;
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+    <script>
+        // --- JAVASCRIPT CON LÓGICA DE SELECCIÓN DE CÁMARA ---
+        const video = document.getElementById('video');
+        const canvas = document.createElement('canvas');
+        const fotoPreview = document.getElementById('foto-preview');
+        const cameraSelect = document.getElementById('cameraSelect');
+        let currentStream;
+        let fotoDataURL = "";
+
+        // 1. FUNCIÓN PARA INICIAR CÁMARA (CON ID ESPECÍFICO)
         async function startCamera(deviceId = null) {
+            // Detener stream anterior si existe para liberar recursos
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
@@ -121,9 +97,10 @@
             const constraints = {
                 video: {
                     deviceId: deviceId ? { exact: deviceId } : undefined,
+                    // Si no hay ID, intenta la trasera (environment), si no, la frontal
+                    facingMode: deviceId ? undefined : "environment",
                     width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    facingMode: deviceId ? undefined : "environment" 
+                    height: { ideal: 720 }
                 }
             };
 
@@ -131,31 +108,42 @@
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 currentStream = stream;
                 video.srcObject = stream;
-                if (!deviceId) await listCameras();
-            } catch (err) {
-                console.error("Error cámara:", err);
+                
+                // Si es la primera vez (no hay deviceId), listamos las cámaras
                 if (!deviceId) {
-                   try {
-                       const streamFallback = await navigator.mediaDevices.getUserMedia({ video: true });
-                       currentStream = streamFallback;
-                       video.srcObject = streamFallback;
-                   } catch(e) { alert("Error: No se puede acceder a la cámara."); }
+                    await listCameras();
+                }
+            } catch (err) {
+                console.error("Error accediendo a la cámara:", err);
+                // Fallback: intentar cualquier cámara si la configuración falla
+                if (!deviceId) {
+                    try {
+                        const simpleStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        currentStream = simpleStream;
+                        video.srcObject = simpleStream;
+                    } catch (e) {
+                        alert("No se pudo acceder a la cámara. Revisa permisos.");
+                    }
                 }
             }
         }
 
+        // 2. FUNCIÓN PARA LLENAR EL SELECTOR
         async function listCameras() {
-            cameraSelect.innerHTML = "";
+            cameraSelect.innerHTML = ""; // Limpiar
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
             if (videoDevices.length === 0) {
-                cameraSelect.innerHTML = "<option>No hay cámaras</option>";
+                const option = document.createElement('option');
+                option.text = "No se encontraron cámaras";
+                cameraSelect.add(option);
                 return;
             }
 
+            // Opción por defecto
             const defaultOption = document.createElement('option');
-            defaultOption.text = "🔄 Cambiar Cámara";
+            defaultOption.text = "Seleccionar Cámara ⬇️";
             defaultOption.disabled = true;
             defaultOption.selected = true;
             cameraSelect.add(defaultOption);
@@ -163,71 +151,89 @@
             videoDevices.forEach((device, index) => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
-                let label = device.label || `Cámara ${index + 1}`;
-                if (label.toLowerCase().includes('back') || label.toLowerCase().includes('trasera')) label = "📸 Cámara Trasera";
-                if (label.toLowerCase().includes('front') || label.toLowerCase().includes('frontal')) label = "🤳 Cámara Selfie";
                 
+                // Nombres amigables
+                let label = device.label || `Cámara ${index + 1}`;
+                if (label.toLowerCase().includes('back') || label.toLowerCase().includes('trasera')) {
+                    label = "📸 Cámara Trasera";
+                } else if (label.toLowerCase().includes('front') || label.toLowerCase().includes('frontal')) {
+                    label = "🤳 Cámara Selfie";
+                }
+
                 option.text = label;
                 cameraSelect.add(option);
             });
 
+            // Evento al cambiar opción
             cameraSelect.onchange = () => {
                 startCamera(cameraSelect.value);
             };
         }
 
-        window.addEventListener('load', () => startCamera());
-
-        btnCapturar.addEventListener('click', () => {
+        // 3. CAPTURAR FOTO
+        function tomarFoto() {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            fotoPreview.src = canvas.toDataURL('image/png');
+            fotoDataURL = canvas.toDataURL('image/png');
+            fotoPreview.src = fotoDataURL;
             
-            // Ocultar video y selector
-            video.parentElement.style.display = 'none';
-            document.querySelector('.camera-wrapper').style.display = 'none'; 
-            btnCapturar.style.display = 'none';
-            formulario.style.display = 'block';
-        });
+            // Cambio de vistas usando clases Bootstrap/CSS
+            document.getElementById('vista-camara').classList.add('hidden');
+            document.getElementById('vista-form').classList.remove('hidden');
+        }
 
-        document.getElementById('btn-repetir').addEventListener('click', () => {
-            formulario.style.display = 'none';
-            // Mostrar video y selector
-            video.parentElement.style.display = 'block';
-            document.querySelector('.camera-wrapper').style.display = 'block';
-            btnCapturar.style.display = 'block';
-        });
+        // 4. REINICIAR
+        function reiniciar() {
+            document.getElementById('vista-form').classList.add('hidden');
+            document.getElementById('vista-camara').classList.remove('hidden');
+            // Reactivar cámara por si acaso se pausó
+            if (cameraSelect.value) {
+                startCamera(cameraSelect.value);
+            } else {
+                startCamera();
+            }
+        }
 
-        document.getElementById('btn-enviar').addEventListener('click', () => {
+        // 5. ENVIAR DATOS (TU LÓGICA ORIGINAL)
+        async function enviarDatos() {
             const nombre = document.getElementById('nombre').value;
             const celular = document.getElementById('celular').value;
             const correo = document.getElementById('correo').value;
-            const foto = fotoPreview.src;
 
-            if (!nombre || !correo) return alert("Faltan datos obligatorios");
+            if (!nombre || !celular || !correo) {
+                alert("Por favor, completa todos los campos.");
+                return;
+            }
 
-            const btn = document.getElementById('btn-enviar');
-            const textoOriginal = btn.textContent;
-            btn.textContent = "⏳ Enviando...";
+            const btn = document.querySelector('.btn-send');
+            const textoOriginal = btn.innerText;
+            btn.innerText = "Enviando...";
             btn.disabled = true;
 
-            fetch('/guardar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre, celular, correo, foto })
-            })
-            .then(res => res.json())
-            .then(data => {
-                alert("¡Foto Enviada! 📸 (Revisa Spam/Promociones)");
-                location.reload();
-            })
-            .catch(err => {
-                alert("Error: " + err);
-                btn.textContent = textoOriginal;
+            try {
+                const respuesta = await fetch('/guardar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, celular, correo, foto: fotoDataURL })
+                });
+                const resultado = await respuesta.json();
+
+                if (resultado.status === 'ok') {
+                    alert("¡Enviado! 🚀 Revisa la carpeta de Promociones/Spam.");
+                    location.reload();
+                } else {
+                    throw new Error(resultado.mensaje);
+                }
+            } catch (error) {
+                alert("Error: " + error.message);
+                btn.innerText = textoOriginal;
                 btn.disabled = false;
-            });
-        });
+            }
+        }
+
+        // Iniciar al cargar
+        window.addEventListener('load', () => startCamera());
     </script>
 </body>
 </html>
