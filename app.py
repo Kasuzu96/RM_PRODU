@@ -2,7 +2,7 @@ import os
 import smtplib
 import base64
 import threading
-import socket  # <--- Necesario para el parche
+import socket
 import sys
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -13,22 +13,21 @@ from flask_cors import CORS
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# --- PARCHE DE COMPATIBILIDAD IPV4 (SOLUCIÓN ERROR 101) ---
-# Esto obliga a Python a usar solo conexiones IPv4 antiguas y estables
-# ignorando IPv6 que causa el error "Network unreachable" en Render.
+# --- PARCHE IPV4 (VITAL PARA RENDER) ---
+# Esto evita que Python intente usar IPv6 y falle
 old_getaddrinfo = socket.getaddrinfo
 def new_getaddrinfo(*args, **kwargs):
     responses = old_getaddrinfo(*args, **kwargs)
     return [r for r in responses if r[0] == socket.AF_INET]
 socket.getaddrinfo = new_getaddrinfo
-# ----------------------------------------------------------
+# ---------------------------------------
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-print("--- ARRANQUE V5: PARCHE IPV4 ACTIVADO ---", file=sys.stdout)
+print("--- ARRANQUE V6: IPV4 + PUERTO 465 (SSL DIRECTO) ---", file=sys.stdout)
 
 # Configuración
 url = os.getenv("SUPABASE_URL")
@@ -44,30 +43,23 @@ def index():
 
 @app.route('/test-email')
 def test_email():
-    print(">>> Iniciando Test V5...", file=sys.stdout)
+    print(">>> Iniciando Test V6 (SSL 465)...", file=sys.stdout)
     try:
         if not MAIL_USER or not MAIL_PASS:
             return "ERROR: Faltan credenciales."
         
-        if " " in MAIL_PASS:
-            return "<h1>ERROR</h1><p>La contraseña tiene espacios. Quítalos en Render.</p>"
-
         msg = MIMEMultipart()
         msg['From'] = MAIL_USER
         msg['To'] = MAIL_USER
-        msg['Subject'] = "Test Render V5 (IPv4 Forzado)"
-        msg.attach(MIMEText("Si lees esto, el parche IPv4 funcionó y superamos el error 101.", 'plain'))
+        msg['Subject'] = "Test Render V6 (SSL 465 + IPv4)"
+        msg.attach(MIMEText("Si lees esto, la combinación SSL+IPv4 funcionó.", 'plain'))
 
-        print(">>> Conectando a SMTP (Puerto 587)...", file=sys.stdout)
+        print(">>> Conectando a SMTP_SSL (Puerto 465)...", file=sys.stdout)
         
-        # Conexión estándar
-        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=20)
+        # --- CAMBIO CLAVE: Volvemos a SMTP_SSL pero con el parche IPv4 activo ---
+        # Timeout extendido a 20s
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20)
         server.set_debuglevel(1)
-        
-        print(">>> STARTTLS...", file=sys.stdout)
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
         
         print(">>> Login...", file=sys.stdout)
         server.login(MAIL_USER, MAIL_PASS)
@@ -76,7 +68,7 @@ def test_email():
         server.send_message(msg)
         server.quit()
         
-        return "<h1>¡VICTORIA! ✅</h1> <p>Correo enviado usando IPv4.</p>"
+        return "<h1>¡VICTORIA V6! ✅</h1> <p>El puerto 465 funcionó gracias al parche IPv4.</p>"
     
     except Exception as e:
         print(f"!!! ERROR TEST: {e}", file=sys.stdout)
@@ -148,10 +140,8 @@ def enviar_smtp(destinatario, asunto, cuerpo, foto, es_html=False):
         img = MIMEImage(foto, name="foto.png")
         msg.attach(img)
 
-        with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
+        # Usamos SMTP_SSL y puerto 465 también aquí
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30) as server:
             server.login(MAIL_USER, MAIL_PASS)
             server.send_message(msg)
             
