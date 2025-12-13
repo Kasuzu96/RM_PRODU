@@ -2,7 +2,8 @@ import os
 import smtplib
 import base64
 import threading
-import sys # Para imprimir logs forzados
+import socket  # <--- Necesario para el parche
+import sys
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -12,13 +13,22 @@ from flask_cors import CORS
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+# --- PARCHE DE COMPATIBILIDAD IPV4 (SOLUCIÓN ERROR 101) ---
+# Esto obliga a Python a usar solo conexiones IPv4 antiguas y estables
+# ignorando IPv6 que causa el error "Network unreachable" en Render.
+old_getaddrinfo = socket.getaddrinfo
+def new_getaddrinfo(*args, **kwargs):
+    responses = old_getaddrinfo(*args, **kwargs)
+    return [r for r in responses if r[0] == socket.AF_INET]
+socket.getaddrinfo = new_getaddrinfo
+# ----------------------------------------------------------
+
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# Imprimir logs inmediatamente (sin esperar buffer)
-print("--- ARRANQUE V4: TIMEOUTS ACTIVADOS ---", file=sys.stdout)
+print("--- ARRANQUE V5: PARCHE IPV4 ACTIVADO ---", file=sys.stdout)
 
 # Configuración
 url = os.getenv("SUPABASE_URL")
@@ -34,42 +44,39 @@ def index():
 
 @app.route('/test-email')
 def test_email():
-    print(">>> Iniciando Test de Email...", file=sys.stdout)
+    print(">>> Iniciando Test V5...", file=sys.stdout)
     try:
         if not MAIL_USER or not MAIL_PASS:
-            return "ERROR: Faltan credenciales en Render."
+            return "ERROR: Faltan credenciales."
         
-        # Validación de contraseña (espacios)
         if " " in MAIL_PASS:
-            return "<h1>ERROR CRÍTICO ❌</h1><p>La contraseña tiene espacios. Quítalos en Render Dashboard.</p>"
+            return "<h1>ERROR</h1><p>La contraseña tiene espacios. Quítalos en Render.</p>"
 
         msg = MIMEMultipart()
         msg['From'] = MAIL_USER
         msg['To'] = MAIL_USER
-        msg['Subject'] = "Test Render V4 (Timeout 10s)"
-        msg.attach(MIMEText("Prueba de conexión con timeout explícito.", 'plain'))
+        msg['Subject'] = "Test Render V5 (IPv4 Forzado)"
+        msg.attach(MIMEText("Si lees esto, el parche IPv4 funcionó y superamos el error 101.", 'plain'))
 
-        print(">>> Conectando a SMTP...", file=sys.stdout)
+        print(">>> Conectando a SMTP (Puerto 587)...", file=sys.stdout)
         
-        # --- CAMBIO V4: Timeout de 10 segundos ---
-        # Si no conecta en 10s, cancela y muestra el error.
-        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=10) 
+        # Conexión estándar
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=20)
+        server.set_debuglevel(1)
         
-        server.set_debuglevel(1) # Logs detallados
-        print(">>> Servidor conectado. Iniciando EHLO...", file=sys.stdout)
+        print(">>> STARTTLS...", file=sys.stdout)
         server.ehlo()
-        print(">>> Iniciando STARTTLS...", file=sys.stdout)
         server.starttls()
-        print(">>> Iniciando EHLO (Post-TLS)...", file=sys.stdout)
         server.ehlo()
-        print(">>> Iniciando Login...", file=sys.stdout)
+        
+        print(">>> Login...", file=sys.stdout)
         server.login(MAIL_USER, MAIL_PASS)
-        print(">>> Enviando mensaje...", file=sys.stdout)
+        
+        print(">>> Enviando...", file=sys.stdout)
         server.send_message(msg)
         server.quit()
         
-        print(">>> ¡ENVÍO EXITOSO!", file=sys.stdout)
-        return "<h1>¡ÉXITO V4! ✅</h1> <p>Correo enviado sin congelarse.</p>"
+        return "<h1>¡VICTORIA! ✅</h1> <p>Correo enviado usando IPv4.</p>"
     
     except Exception as e:
         print(f"!!! ERROR TEST: {e}", file=sys.stdout)
@@ -106,7 +113,7 @@ def guardar_datos():
         except:
             html = f"Hola {nombre}"
 
-        # Hilo con manejo de errores mejorado
+        # Hilo
         hilo = threading.Thread(
             target=tarea_enviar, 
             args=(nombre, celular, correo, binary, html)
@@ -120,9 +127,7 @@ def guardar_datos():
 
 def tarea_enviar(nombre, celular, correo, binary, html):
     try:
-        # Enviar Admin
         enviar_smtp(MAIL_USER, f"Lead: {nombre}", f"Datos: {celular} - {correo}", binary)
-        # Enviar Cliente
         enviar_smtp(correo, f"¡Hola {nombre}!", html, binary, es_html=True)
         print(f"--- Hilo completado para {nombre} ---", file=sys.stdout)
     except Exception as e:
@@ -143,8 +148,7 @@ def enviar_smtp(destinatario, asunto, cuerpo, foto, es_html=False):
         img = MIMEImage(foto, name="foto.png")
         msg.attach(img)
 
-        # Timeout de 15s para envío real
-        with smtplib.SMTP('smtp.gmail.com', 587, timeout=15) as server:
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
@@ -153,7 +157,6 @@ def enviar_smtp(destinatario, asunto, cuerpo, foto, es_html=False):
             
     except Exception as e:
         print(f"!!! Error SMTP ({destinatario}): {e}", file=sys.stdout)
-        raise e
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
