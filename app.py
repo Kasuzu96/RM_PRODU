@@ -131,12 +131,16 @@ def guardar_datos():
             if video_url:
                  html_cliente += f"<p><a href='{video_url}' style='padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;'>🎬 Ver Video</a></p>"
 
-        # Hilo
+        # Hilo Email
         hilo = threading.Thread(
             target=tarea_enviar_brevo, 
             args=(nombre, celular, correo, encoded_img, html_cliente, video_url)
         )
         hilo.start()
+
+        # Hilo Limpieza (gestión de almacenamiento)
+        hilo_limpieza = threading.Thread(target=gestionar_almacenamiento)
+        hilo_limpieza.start()
 
         return jsonify({"status": "ok", "mensaje": "Enviando con Brevo..."})
 
@@ -205,6 +209,73 @@ def enviar_brevo(destinatario, asunto, html_content, foto_b64):
     except Exception as e:
         print(f"Error Request Brevo: {e}", file=sys.stdout)
         raise e
+
+def gestionar_almacenamiento():
+    # Configuración: 10 GB límite, borrar 5 GB
+    LIMIT_BYTES = 10 * 1024 * 1024 * 1024 
+    TARGET_DELETE_BYTES = 5 * 1024 * 1024 * 1024 
+
+    print("--- 🧹 Verificando Almacenamiento Cloudinary (Carpeta fiesta_app) ---", file=sys.stdout)
+    
+    try:
+        resources = []
+        next_cursor = None
+        total_size = 0
+        
+        # 1. Listar TODOS los videos
+        while True:
+            res = cloudinary.api.resources(
+                type="upload",
+                resource_type="video", 
+                prefix="fiesta_app/", 
+                max_results=500,
+                direction="asc", # Del más viejo al más nuevo
+                next_cursor=next_cursor
+            )
+            items = res.get('resources', [])
+            resources.extend(items)
+            
+            for item in items:
+                total_size += item.get('bytes', 0)
+                
+            if 'next_cursor' in res:
+                next_cursor = res['next_cursor']
+            else:
+                break
+        
+        gb_used = total_size / (1024 * 1024 * 1024)
+        print(f"📊 Uso actual: {gb_used:.2f} GB (Límite: 10.00 GB)", file=sys.stdout)
+
+        # 2. Verificar si excede
+        if total_size > LIMIT_BYTES:
+            print(f"⚠️ Límite excedido. Iniciando limpieza de ~5 GB...", file=sys.stdout)
+            
+            deleted_accumulated = 0
+            ids_to_delete = []
+            
+            for item in resources:
+                if deleted_accumulated >= TARGET_DELETE_BYTES:
+                    break
+                
+                ids_to_delete.append(item['public_id'])
+                deleted_accumulated += item.get('bytes', 0)
+            
+            # 3. Borrar
+            if ids_to_delete:
+                # Borrar en lotes de 50
+                chunk_size = 50
+                for i in range(0, len(ids_to_delete), chunk_size):
+                    batch = ids_to_delete[i:i + chunk_size]
+                    cloudinary.api.delete_resources(batch, resource_type="video")
+                    print(f"🗑️ Borrados {len(batch)} videos...", file=sys.stdout)
+                
+                gb_freed = deleted_accumulated / (1024 * 1024 * 1024)
+                print(f"✅ Limpieza completada. Liberados: {gb_freed:.2f} GB", file=sys.stdout)
+        else:
+            print("✅ Almacenamiento bajo control.", file=sys.stdout)
+
+    except Exception as e:
+        print(f"❌ Error en Auto-Limpieza: {e}", file=sys.stdout)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
