@@ -1,29 +1,36 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <title>Tu Foto de RM Producciones</title>
     <style>
         /* Estilos en línea para máxima compatibilidad con clientes de correo */
-        body { 
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
-            background-color: #121212; /* Fondo oscuro global */
-            margin: 0; 
-            padding: 0; 
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            /* Fondo oscuro global */
+            margin: 0;
+            padding: 0;
         }
+
         .email-container {
             max-width: 600px;
             margin: 20px auto;
-            background-color: #1e1e1e; /* Fondo de la tarjeta */
+            background-color: #1e1e1e;
+            /* Fondo de la tarjeta */
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
         }
+
         .email-header {
-            background-color: #007bff; /* Azul del logo */
+            background-color: #007bff;
+            /* Azul del logo */
             padding: 30px 20px;
             text-align: center;
         }
+
         .email-header h1 {
             color: #ffffff;
             margin: 0;
@@ -31,32 +38,40 @@
             text-transform: uppercase;
             letter-spacing: 2px;
         }
+
         .email-content {
             padding: 30px;
-            color: #f8f9fa; /* Texto claro */
+            color: #f8f9fa;
+            /* Texto claro */
             text-align: center;
             line-height: 1.6;
         }
+
         .email-content p {
             margin-bottom: 20px;
             font-size: 16px;
         }
+
         .photo-container {
             margin: 20px auto;
-            border: 3px solid #007bff; /* Borde azul para la foto */
+            border: 3px solid #007bff;
+            /* Borde azul para la foto */
             border-radius: 8px;
             overflow: hidden;
             display: inline-block;
         }
+
         .email-footer {
             background-color: #121212;
             padding: 20px;
             text-align: center;
-            color: #adb5bd; /* Texto gris */
+            color: #adb5bd;
+            /* Texto gris */
             font-size: 12px;
         }
     </style>
 </head>
+
 <body>
     <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
         <tr>
@@ -65,18 +80,31 @@
                     <div class="email-header">
                         <h1>RM PRODUCCIONES</h1>
                     </div>
-                    
+
                     <div class="email-content">
                         <p>¡Hola, <strong>{{ nombre }}</strong>!</p>
                         <p>Gracias por ser parte de nuestra experiencia. Aquí tienes el recuerdo de tu visita.</p>
-                        
-                        <div class="photo-container">
-                            <p style="font-size: 14px; color: #adb5bd;">(Tu foto está adjunta a este correo)</p>
+
+                        <div class="photo-container" style="border: none;">
+                            {% if video_url %}
+                            <p>🎥 ¡Has grabado un video increíble!</p>
+                            <a href="{{ video_url }}"
+                                style="display: inline-block; padding: 15px 30px; background-color: #dc3545; color: white; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 18px;">🎬
+                                Ver Video Ahora</a>
+                            <p style="font-size: 12px; color: #adb5bd; margin-top: 10px;">(El enlace te llevará a tu
+                                video)</p>
+                            {% else %}
+                            <div
+                                style="border: 3px solid #007bff; border-radius: 8px; display: inline-block; padding: 5px;">
+                                <p style="font-size: 14px; color: #adb5bd; margin: 0;">(Tu foto está adjunta a este
+                                    correo)</p>
+                            </div>
+                            {% endif %}
                         </div>
-                        
+
                         <p>¡Esperamos verte pronto!</p>
                     </div>
-                    
+
                     <div class="email-footer">
                         <p>&copy; 2025 RM Producciones. Todos los derechos reservados.</p>
                     </div>
@@ -85,4 +113,5 @@
         </tr>
     </table>
 </body>
+
 </html>
